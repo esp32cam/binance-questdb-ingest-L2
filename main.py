@@ -3,6 +3,7 @@ import json
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 import os
+import numpy as np  # Add this for array support
 import websockets
 from questdb.ingress import Sender
 
@@ -10,8 +11,8 @@ from questdb.ingress import Sender
 HOST = os.getenv("QUESTDB_HOST", "metro.proxy.rlwy.net")
 PORT = os.getenv("QUESTDB_PORT", "25708")
 BANGKOK_TZ = timedelta(hours=7)
-DEPTH = 5          # 5 levels (พอสำหรับ momentum)
-AGG_INTERVAL = 30  # 30 วินาที (ตามที่คุณต้องการ)
+DEPTH = 5          # 5 levels
+AGG_INTERVAL = 30  # 30 วินาที
 # ===========================================
 
 TICKERS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOT', 'AVAX', 'LINK', 'LTC', 'BCH', 'TRX', 'MATIC', 'SUI', 'APT', 'NEAR', 'TIA', 'ATOM', 'ALGO', 'STX', 'EGLD', 'KAS', 'USDT', 'USDC', 'FDUSD', 'DAI', 'FRAX', 'RLUSD', 'DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'MEW', 'NEIRO', 'BRETT', 'FARTCOIN', 'POPCAT', 'MOODENG', 'GOAT', 'FET', 'TAO', 'RENDER', 'HYPE', 'AKT', 'AR', 'FIL', 'GRT', 'ICP', 'THETA', 'LPT', 'JASMY', 'IO', 'NOS', 'PLANCK', 'AAVE', 'UNI', 'SUSHI', 'CRV', 'MKR', 'DYDX', 'SNX', '1INCH', 'PYTH', 'API3', 'JUP', 'ENA', 'PENDLE', 'RAY', 'BREV', 'ZENT', 'ATH', 'CGPT', 'COOKIE', 'ZKC', 'KAITO', 'MORPHO', 'SOMI', 'TURTLE', 'SENT', 'HYPER', 'ZAMA', 'GALA', 'AXS', 'SAND', 'MANA', 'ILV', 'IMX', 'BEAM']
@@ -50,15 +51,15 @@ async def flush_to_questdb(ts):
                     'book_l2',
                     symbols={'symbol': symbol},
                     columns={
-                        'bids_price': list(bids_price),
-                        'bids_qty': list(bids_qty),
-                        'asks_price': list(asks_price),
-                        'asks_qty': list(asks_qty)
+                        'bids_price': np.array(bids_price),  # Convert to np.array
+                        'bids_qty': np.array(bids_qty),
+                        'asks_price': np.array(asks_price),
+                        'asks_qty': np.array(asks_qty)
                     },
                     at=ts
                 )
             sender.flush()
-            print(f"✅ L2 Flushed {len(buffer)} symbols @ {ts} (Bangkok time, 30s agg)")
+            print(f"✅ L2 Flushed {len(buffer)} symbols @ {ts} (Bangkok time)")
     except Exception as e:
         print(f"❌ L2 Flush error: {e}")
 
@@ -66,7 +67,8 @@ async def main():
     stream_names = [f"{s.lower()}@depth{DEPTH}" for s in SYMBOLS]
     url = f"wss://fstream.binance.com/stream?streams={'/'.join(stream_names)}"
 
-    print(f"🚀 เริ่มดึง L2 ({DEPTH} levels) agg ทุก {AGG_INTERVAL} วินาที สำหรับ {len(SYMBOLS)} symbols")
+    print(f"🚀 เริ่มดึง L2 ({DEPTH} levels) agg ทุก 30 วินาที สำหรับ {len(SYMBOLS)} symbols")
+    print(f"QuestDB: {HOST}:{PORT}")
 
     while True:
         try:
