@@ -3,7 +3,6 @@ import json
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 import os
-import numpy as np  # Add this for array support
 import websockets
 from questdb.ingress import Sender
 
@@ -20,14 +19,14 @@ TICKERS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOT', 'AVAX', 'LINK', 'LTC
 SYMBOLS = [f"{t}USDT" for t in TICKERS if t not in ['USDT','USDC','DAI','FDUSD','FRAX','RLUSD']]
 SYMBOLS = list(dict.fromkeys(SYMBOLS))
 
-buffer = defaultdict(lambda: {'bids': [], 'asks': []})
+buffer = defaultdict(dict)
 last_flush = datetime.now(timezone.utc) + BANGKOK_TZ
 
 async def handle_l2(data):
     global last_flush
     symbol = data['s']
-    bids = [[float(p), float(q)] for p, q in data['b'][:DEPTH]]
-    asks = [[float(p), float(q)] for p, q in data['a'][:DEPTH]]
+    bids = data['b'][:DEPTH]
+    asks = data['a'][:DEPTH]
 
     now = datetime.now(timezone.utc) + BANGKOK_TZ
     ts_floor = now.replace(microsecond=0)
@@ -44,18 +43,26 @@ async def flush_to_questdb(ts):
         with Sender.from_conf(f"tcp::addr={HOST}:{PORT};") as sender:
             for symbol, book in buffer.items():
                 if not book: continue
-                bids_price, bids_qty = zip(*book['bids']) if book['bids'] else ([], [])
-                asks_price, asks_qty = zip(*book['asks']) if book['asks'] else ([], [])
+                columns = {}
+                for i in range(DEPTH):
+                    if i < len(book['bids']):
+                        columns[f'bid_price{i+1}'] = float(book['bids'][i][0])
+                        columns[f'bid_qty{i+1}'] = float(book['bids'][i][1])
+                    else:
+                        columns[f'bid_price{i+1}'] = 0.0
+                        columns[f'bid_qty{i+1}'] = 0.0
+
+                    if i < len(book['asks']):
+                        columns[f'ask_price{i+1}'] = float(book['asks'][i][0])
+                        columns[f'ask_qty{i+1}'] = float(book['asks'][i][1])
+                    else:
+                        columns[f'ask_price{i+1}'] = 0.0
+                        columns[f'ask_qty{i+1}'] = 0.0
 
                 sender.row(
                     'book_l2',
                     symbols={'symbol': symbol},
-                    columns={
-                        'bids_price': np.array(bids_price),  # Convert to np.array
-                        'bids_qty': np.array(bids_qty),
-                        'asks_price': np.array(asks_price),
-                        'asks_qty': np.array(asks_qty)
-                    },
+                    columns=columns,
                     at=ts
                 )
             sender.flush()
